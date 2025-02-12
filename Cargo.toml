@@ -27,6 +27,9 @@ sea-orm = { version = "1.1.1", features = [
     "runtime-tokio-rustls",
     "macros"
 ] }
+rust_decimal = "1.36.0"
+bcrypt = "0.17.0"
+service_utils_rs = { version = "0.1.2", features = ["jwt"] }
 
 lazy_static = { version = "1.5" }
 

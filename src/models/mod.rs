@@ -1,51 +1,47 @@
+pub mod auth_model;
+pub mod trade_model;
+
+use sea_orm::prelude::DateTimeWithTimeZone;
 use serde::{Deserialize, Serialize};
-use validator::Validate;
 
-use crate::trade::TradeDirection;
-
-#[derive(Debug, Deserialize, Validate)]
-pub struct CreateTradeRequest {
-    pub symbol: String,
-    pub direction: TradeDirection,
-    pub leverage: f64,
-    pub margin: f64,
-    pub stop_loss_percent: f64,
-    pub adjustment_id: u8,
+pub trait IntoCommonResponse {
+    fn into_common_response_data(self) -> CommonResponse;
 }
 
-#[derive(Debug, Serialize, Validate)]
-pub struct CreateTradeResponse {
-    pub id: usize,
-    pub symbol: String,
-    pub direction: TradeDirection,
-    pub leverage: f64,
-    pub margin: f64,
-    pub quantity: String,
-    pub entry_price: String,
-    pub stop_price: String,
+impl<T> IntoCommonResponse for T
+where
+    T: Serialize,
+{
+    fn into_common_response_data(self) -> CommonResponse {
+        CommonResponse {
+            code: 0,
+            data: serde_json::to_value(self).expect("Failed to convert to serde_json::Value"),
+            message: String::from("Success"),
+        }
+    }
 }
 
-// 平仓请求结构体
-#[derive(Deserialize)]
-pub struct CloseTradeRequest {
-    pub id: usize,
-    pub symbol: String,
+#[derive(Debug, Serialize)]
+pub struct CommonResponse {
+    pub code: u16,
+    pub data: serde_json::Value,
+    pub message: String,
 }
 
-// 平仓响应结构体
-#[derive(Serialize)]
-pub struct CloseTradeResponse {
-    pub id: usize,
-    pub symbol: String,
-    pub direction: TradeDirection,
-    pub entry_price: f64,
-    pub close_price: String,
-    pub quantity: String,
+impl Default for CommonResponse {
+    fn default() -> Self {
+        CommonResponse {
+            code: 0,
+            data: serde_json::Value::Null,
+            message: String::from("Success"),
+        }
+    }
 }
 
-#[derive(Deserialize)]
-pub struct TradeQueryParams {
-    pub symbol: Option<String>,  // 货币符号 (可选)
-    pub start_time: Option<u32>, // 起始时间戳 (可选)
-    pub end_time: Option<u32>,   // 结束时间戳 (可选)
+#[derive(Deserialize, Debug)]
+pub struct CommonParams {
+    pub skip: Option<u64>,  // 允许为 None，且当存在时必须为非负数
+    pub limit: Option<u64>, // 允许为 None，且当存在时必须为非负数
+    pub start_time: Option<DateTimeWithTimeZone>, // 允许为 None，且当存在时必须为非负数
+    pub end_time: Option<DateTimeWithTimeZone>, // 允许为 None，且当存在时必须为非负数
 }

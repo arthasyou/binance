@@ -56,7 +56,7 @@ pub async fn request<T: DeserializeOwned>(url: &str, method: Method, api_key: &s
     let response_text = request_builder.send().await?.text().await?;
 
     // 打印响应内容
-    // println!("Response content: {}", response_text);
+    println!("Response content: {}", response_text);
 
     // 解析响应为指定类型
     let response = serde_json::from_str::<T>(&response_text).map_err(|e| {

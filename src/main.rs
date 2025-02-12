@@ -1,6 +1,7 @@
 mod binance;
 mod db;
 mod error;
+mod handlers;
 mod models;
 mod mw;
 mod orm;
@@ -18,13 +19,15 @@ use std::{collections::HashMap, env, sync::Arc};
 use trade::{Adjustment, AdjustmentConfig, Trade};
 use utils::{create_adjustment_config_raw, TradeIdGenerator};
 
+use service_utils_rs::{services::jwt::Jwt, settings::Settings};
 use tokio::{self, sync::Mutex};
-
 use websocket_lib::connection::connect_to_websocket;
 
 #[tokio::main]
 async fn main() {
     dotenv().ok();
+    let settings = Settings::new("config/services.toml").unwrap();
+    let jwt = Jwt::new(settings.jwt);
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     let database = connect_db(&database_url).await.unwrap();
     let port = env::var("PORT").expect("PORT must be set");
@@ -58,6 +61,7 @@ async fn main() {
         database,
         Arc::new(precisions),
         adjustment,
+        jwt,
     );
 
     let addr = format!("0.0.0.0:{}", port);

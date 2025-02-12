@@ -5,7 +5,7 @@ use sea_orm::{ActiveModelTrait, DatabaseConnection, Set};
 use serde::{Deserialize, Serialize};
 use tokio::time::sleep;
 
-use crate::binance::account::get_orders;
+use crate::binance::account::get_order;
 use crate::binance::order::{cancel_order, create_order, CancelOrderResponse, OrderResponse};
 use crate::error::{Error, Result};
 use crate::orm::trades;
@@ -225,7 +225,7 @@ impl Trade {
             )
             .await
             {
-                Ok(order) => match get_orders(&self.symbol, order.orderId).await {
+                Ok(order) => match get_order(&self.symbol, order.orderId).await {
                     Ok(b_order) => create_trade_record(database, &self, &b_order.avgPrice).await,
                     Err(_) => create_trade_record(database, &self, price).await,
                 },
