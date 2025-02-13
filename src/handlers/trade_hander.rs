@@ -29,7 +29,7 @@ use crate::routes::error::AppError;
 // 导入我们创建的 TradeIdGenerator
 
 pub async fn create_trade(
-    Extension(id): Extension<String>,
+    Extension(user_id): Extension<String>,
     Extension(api_keys): Extension<Arc<KeyManager>>,
     Extension(trades): Extension<Arc<HashMap<String, Mutex<Vec<Trade>>>>>,
     Extension(prices): Extension<Arc<HashMap<String, Mutex<(String, String)>>>>,
@@ -38,7 +38,7 @@ pub async fn create_trade(
     Extension(adjustments): Extension<Arc<HashMap<u8, Mutex<AdjustmentConfig>>>>,
     Json(payload): Json<CreateTradeRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let key = get_api_key(api_keys, &id).await?;
+    let key = get_api_key(api_keys, &user_id).await?;
     if let Some(mutex) = prices.get(&payload.symbol) {
         let book = mutex.lock().await;
 
@@ -98,6 +98,7 @@ pub async fn create_trade(
                             let id = id_generator.next_id(); // 使用 id_generator 获取自增的 id
                             let t = Trade::new(
                                 id,
+                                user_id.clone(),
                                 order.orderId,
                                 payload.symbol.clone(),
                                 price_f64,
@@ -106,6 +107,8 @@ pub async fn create_trade(
                                 payload.leverage,
                                 payload.stop_loss_percent,
                                 adjustment,
+                                key.api_key.clone(),
+                                key.api_secret.clone(),
                             )
                             .await;
 

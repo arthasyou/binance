@@ -3,8 +3,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use futures_util::stream::Scan;
-
 #[derive(Debug, Clone)]
 pub struct SecretKey {
     pub id: String,

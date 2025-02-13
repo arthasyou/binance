@@ -1,13 +1,11 @@
 use std::fmt;
-use std::time::Duration;
 
 use sea_orm::{ActiveModelTrait, DatabaseConnection, Set};
 use serde::{Deserialize, Serialize};
-use tokio::time::sleep;
 
 use crate::binance::account::get_order;
-use crate::binance::order::{cancel_order, create_order, CancelOrderResponse, OrderResponse};
-use crate::error::{Error, Result};
+use crate::binance::order::create_order;
+
 use crate::orm::trades;
 
 // 模拟的交易方向
@@ -30,6 +28,7 @@ impl fmt::Display for TradeDirection {
 #[derive(Debug, Clone, Serialize)]
 pub struct Trade {
     pub id: usize,
+    pub owner_id: String,
     pub order_id: u64,
     pub stop_order: u64,           // 唯一ID字段，用于唯一标识每笔交易
     pub symbol: String, // 货币或资产符号，表示此交易涉及的交易品种，如 "EUR/USD" 或 "AAPL"
@@ -42,12 +41,15 @@ pub struct Trade {
     pub leverage: f64,
     pub adjustment: Vec<Adjustment>,
     pub is_closed: bool, // 杠杆倍数
+    api_key: String,
+    api_secret: String,
 }
 
 impl Trade {
     // 创建一个新的交易，自动设置止损为-5%（即95%）
     pub async fn new(
         id: usize,
+        owner_id: String,
         order_id: u64,
         symbol: String,
         entry_price: f64,
@@ -56,6 +58,8 @@ impl Trade {
         leverage: f64,
         stop_loss_percent: f64,
         mut adjustment: Vec<Adjustment>,
+        api_key: String,
+        api_secret: String,
     ) -> Self {
         let stop_loss = calculate_stop_price(&direction, entry_price, leverage, stop_loss_percent);
         // let (side, position_side) = match direction {
@@ -84,6 +88,7 @@ impl Trade {
 
         Self {
             id,
+            owner_id,
             order_id,
             stop_order: stop_order_id,
             symbol,
@@ -96,6 +101,8 @@ impl Trade {
             leverage,
             adjustment,
             is_closed: false,
+            api_key,
+            api_secret,
         }
     }
 
@@ -222,13 +229,21 @@ impl Trade {
                 &self.quantity, // 将数量格式化为字符串
                 None,           // 市价单无需价格
                 None,           // 此示例未设置止损价格
+                &self.api_key,
+                &self.api_secret,
             )
             .await
             {
-                Ok(order) => match get_order(&self.symbol, order.orderId).await {
-                    Ok(b_order) => create_trade_record(database, &self, &b_order.avgPrice).await,
-                    Err(_) => create_trade_record(database, &self, price).await,
-                },
+                Ok(order) => {
+                    match get_order(&self.symbol, order.orderId, &self.api_key, &self.api_secret)
+                        .await
+                    {
+                        Ok(b_order) => {
+                            create_trade_record(database, &self, &b_order.avgPrice).await
+                        }
+                        Err(_) => create_trade_record(database, &self, price).await,
+                    }
+                }
                 Err(_) => {}
             }
 
@@ -399,6 +414,7 @@ mod tests {
             },
         ];
         let mut trade = Trade {
+            owner_id: "".to_string(),
             entry_price: 4.5,
             highest_price: 5.0,
             lowest_price: 4.0,
@@ -412,6 +428,8 @@ mod tests {
             quantity: "1.0".to_string(),
             adjustment,
             is_closed: false,
+            api_key: "".to_string(),
+            api_secret: "".to_string(),
         };
 
         let test_cases = vec![
@@ -502,6 +520,7 @@ mod tests {
             },
         ];
         let mut trade = Trade {
+            owner_id: "".to_string(),
             entry_price: 4.5,
             highest_price: 5.0,
             lowest_price: 4.0,
@@ -515,6 +534,8 @@ mod tests {
             quantity: "1.0".to_string(),
             adjustment,
             is_closed: false,
+            api_key: "".to_string(),
+            api_secret: "".to_string(),
         };
 
         // x if x >= 0.10 && x < 0.19 => 0.02,
