@@ -6,6 +6,7 @@ mod models;
 mod mw;
 mod orm;
 mod routes;
+mod secret_key;
 mod trade;
 mod utils;
 mod websocket_lib;
@@ -51,6 +52,7 @@ async fn main() {
     let prices = init_price(&symbols);
     let id_generator = Arc::new(TradeIdGenerator::new());
     let adjustment = init_adjustment();
+    let api_keys = secret_key::KeyManager::new();
 
     let ws_task = start_websocket(&symbols, trades.clone(), prices.clone(), database.clone());
 
@@ -62,6 +64,7 @@ async fn main() {
         Arc::new(precisions),
         adjustment,
         jwt,
+        api_keys,
     );
 
     let addr = format!("0.0.0.0:{}", port);

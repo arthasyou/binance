@@ -32,6 +32,8 @@ pub async fn create_order(
     quantity: &str,      // 下单数量
     price: Option<&str>, // 价格，市价单可为空
     stop_price: Option<&str>,
+    key: &str,
+    secret: &str,
 ) -> Result<OrderResponse> {
     let endpoint = format!("{}/fapi/v1/order", super::BASE_URL);
 

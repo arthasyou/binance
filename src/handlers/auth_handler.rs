@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use axum::Extension;
 use axum::{http::StatusCode, Json};
 use bcrypt::{hash, DEFAULT_COST};
@@ -8,8 +10,10 @@ use crate::models::auth_model::{LoginRequest, LoginRespon, SignupRequest};
 use crate::models::{CommonResponse, IntoCommonResponse};
 use crate::orm::prelude::Users;
 use crate::orm::users;
+use crate::secret_key::{KeyManager, SecretKey};
 
 pub async fn login(
+    Extension(api_keys): Extension<Arc<KeyManager>>,
     Extension(db): Extension<DatabaseConnection>,
     Extension(jwt): Extension<Jwt>,
     Json(payload): Json<LoginRequest>,
@@ -19,13 +23,22 @@ pub async fn login(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
+    let user_id = db_user.id.clone().unwrap().to_string();
     let (accece, refleash) = jwt
-        .generate_token_pair(db_user.id.unwrap().to_string())
+        .generate_token_pair(user_id.clone())
         .map_err(|_| StatusCode::UNAUTHORIZED)?;
     let data = LoginRespon {
         access_token: accece,
         refresh: refleash,
     };
+
+    let secret_key = SecretKey::new(
+        user_id,
+        db_user.apikey.clone().unwrap(),
+        db_user.secret.clone().unwrap(),
+    );
+
+    api_keys.insert_key(secret_key);
 
     let res = data.into_common_response_data();
     Ok(Json(res))

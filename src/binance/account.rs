@@ -1,4 +1,4 @@
-use crate::error::Result;
+use crate::{error::Result, secret_key};
 use reqwest::Method;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize}; // 需要引入 rust-decimal crate
@@ -92,7 +92,7 @@ pub struct Position {
     pub update_time: i64, // 更新时间
 }
 
-pub async fn get_risk() -> Result<Vec<Position>> {
+pub async fn get_risk(key: &str, secret: &str) -> Result<Vec<Position>> {
     let endpoint = format!("{}/fapi/v3/positionRisk", super::BASE_URL);
 
     // 获取当前时间戳
@@ -100,13 +100,13 @@ pub async fn get_risk() -> Result<Vec<Position>> {
 
     // 准备查询字符串并生成签名
     let query_string = format!("timestamp={}", timestamp);
-    let signature = super::create_signature(&super::API_SECRET, &query_string);
+    let signature = super::create_signature(secret, &query_string);
 
     // 完整请求 URL，包含签名
     let url = format!("{}?{}&signature={}", endpoint, query_string, signature);
 
     // 调用 get_request 发起请求并解析为 AccountInfo
-    super::request(&url, Method::GET, &super::API_KEY).await
+    super::request(&url, Method::GET, key).await
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -115,7 +115,12 @@ pub struct BiannceOrder {
     pub executedQty: String,
 }
 
-pub async fn get_order(symbol: &str, order_id: u64) -> Result<BiannceOrder> {
+pub async fn get_order(
+    symbol: &str,
+    order_id: u64,
+    key: &str,
+    secret: &str,
+) -> Result<BiannceOrder> {
     let endpoint = format!("{}/fapi/v1/order", super::BASE_URL);
 
     // 获取当前时间戳

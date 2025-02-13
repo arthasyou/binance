@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, f32::consts::E, sync::Arc};
 
 use axum::{extract::Query, http::StatusCode, response::IntoResponse, Extension, Json};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
@@ -10,7 +10,7 @@ use tokio::sync::Mutex;
 
 use crate::{
     binance::{
-        account::{get_order, get_risk},
+        account::{get_order, get_risk, Position},
         leverage::change_leverage,
         order::create_order,
     },
@@ -19,6 +19,7 @@ use crate::{
         TradeQueryParams,
     },
     orm::trades,
+    secret_key::{KeyManager, SecretKey},
     trade::{create_trade_record, Adjustment, AdjustmentConfig, Trade, TradeDirection},
     utils::TradeIdGenerator,
 };
@@ -28,13 +29,16 @@ use crate::routes::error::AppError;
 // 导入我们创建的 TradeIdGenerator
 
 pub async fn create_trade(
+    Extension(id): Extension<String>,
+    Extension(api_keys): Extension<Arc<KeyManager>>,
     Extension(trades): Extension<Arc<HashMap<String, Mutex<Vec<Trade>>>>>,
     Extension(prices): Extension<Arc<HashMap<String, Mutex<(String, String)>>>>,
     Extension(precisions): Extension<Arc<HashMap<String, u8>>>,
     Extension(id_generator): Extension<Arc<TradeIdGenerator>>,
     Extension(adjustments): Extension<Arc<HashMap<u8, Mutex<AdjustmentConfig>>>>,
     Json(payload): Json<CreateTradeRequest>,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let key = get_api_key(api_keys, &id).await?;
     if let Some(mutex) = prices.get(&payload.symbol) {
         let book = mutex.lock().await;
 
@@ -47,8 +51,12 @@ pub async fn create_trade(
             let precision = match precisions.get(&payload.symbol) {
                 Some(&p) => p, // 解引用获取精度值
                 None => {
-                    return AppError::new(StatusCode::BAD_REQUEST, "Symbol precision not found")
-                        .into_response();
+                    return Err((
+                        StatusCode::BAD_REQUEST,
+                        "Symbol precision not found".to_string(),
+                    ));
+                    // return AppError::new(StatusCode::BAD_REQUEST, "Symbol precision not found")
+                    //     .into_response();
                 }
             };
 
@@ -69,12 +77,21 @@ pub async fn create_trade(
                 &quantity, // 将数量格式化为字符串
                 None,      // 市价单无需价格
                 None,      // 此示例未设置止损价格
+                &key.api_key,
+                &key.api_secret,
             )
             .await;
 
             match order_response {
                 Ok(order) => {
-                    match get_order(&payload.symbol, order.orderId).await {
+                    match get_order(
+                        &payload.symbol,
+                        order.orderId,
+                        &key.api_key,
+                        &key.api_secret,
+                    )
+                    .await
+                    {
                         Ok(b_order) => {
                             let price_f64: f64 = b_order.avgPrice.parse().unwrap();
                             // 获取订单 ID
@@ -107,29 +124,24 @@ pub async fn create_trade(
                                     entry_price: b_order.avgPrice.clone(),
                                     stop_price: format!("{:.4}", t.stop_loss),
                                 };
-                                (StatusCode::OK, Json(result)).into_response()
+                                Ok((StatusCode::OK, Json(result)).into_response())
                             } else {
-                                AppError::new(StatusCode::BAD_REQUEST, "Failed to save trade")
-                                    .into_response()
+                                Err((StatusCode::BAD_REQUEST, "Failed to save trade".to_string()))
                             }
                         }
-                        Err(e) => {
-                            AppError::new(StatusCode::BAD_REQUEST, format!("Order failed: {}", e))
-                                .into_response()
-                        }
+                        Err(e) => Err((StatusCode::BAD_REQUEST, format!("Order failed: {}", e))),
                     }
                 }
                 Err(e) => {
                     // 处理下单错误
-                    AppError::new(StatusCode::BAD_REQUEST, format!("Order failed: {}", e))
-                        .into_response()
+                    Err((StatusCode::BAD_REQUEST, format!("Order failed: {}", e)))
                 }
             }
         } else {
-            AppError::new(StatusCode::BAD_REQUEST, "failed, symbol").into_response()
+            Err((StatusCode::BAD_REQUEST, "failed, symbol".to_string()))
         }
     } else {
-        AppError::new(StatusCode::BAD_REQUEST, "failed, symbol").into_response()
+        Err((StatusCode::BAD_REQUEST, "failed, symbol".to_string()))
     }
 }
 
@@ -180,11 +192,14 @@ pub async fn get_price(
 }
 
 pub async fn close_trade(
+    Extension(id): Extension<String>,
+    Extension(api_keys): Extension<Arc<KeyManager>>,
     Extension(trades): Extension<Arc<HashMap<String, Mutex<Vec<Trade>>>>>,
     Extension(prices): Extension<Arc<HashMap<String, Mutex<(String, String)>>>>,
     Extension(database): Extension<DatabaseConnection>,
     Json(payload): Json<CloseTradeRequest>,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let key = get_api_key(api_keys, &id).await?;
     // 检查是否存在该 symbol 的交易记录
     if let Some(mutex) = prices.get(&payload.symbol) {
         let book = mutex.lock().await;
@@ -207,11 +222,20 @@ pub async fn close_trade(
                     &trade.quantity, // 将数量格式化为字符串
                     None,            // 市价单无需价格
                     None,            // 此示例未设置止损价格
+                    &key.api_key,
+                    &key.api_secret,
                 )
                 .await;
 
                 match order_response {
-                    Ok(order) => match get_order(&payload.symbol, order.orderId).await {
+                    Ok(order) => match get_order(
+                        &payload.symbol,
+                        order.orderId,
+                        &key.api_key,
+                        &key.api_secret,
+                    )
+                    .await
+                    {
                         Ok(b_order) => {
                             create_trade_record(&database, &trade, &b_order.avgPrice).await;
 
@@ -225,26 +249,20 @@ pub async fn close_trade(
                                 quantity: trade.quantity,
                             };
 
-                            return (StatusCode::OK, Json(result)).into_response();
+                            return Ok((StatusCode::OK, Json(result)).into_response());
                         }
-                        Err(_) => {
-                            return AppError::new(StatusCode::BAD_REQUEST, "Trade not found")
-                                .into_response()
-                        }
+                        Err(_) => Err((StatusCode::BAD_REQUEST, "Trade not found".to_string())),
                     },
-                    Err(_) => {
-                        return AppError::new(StatusCode::BAD_REQUEST, "Trade not found")
-                            .into_response()
-                    }
+                    Err(_) => Err((StatusCode::BAD_REQUEST, "Trade not found".to_string())),
                 }
             } else {
-                return AppError::new(StatusCode::BAD_REQUEST, "Trade not found").into_response();
+                return Err((StatusCode::BAD_REQUEST, "Trade not found".to_string()));
             }
         } else {
-            AppError::new(StatusCode::BAD_REQUEST, "Symbol not found").into_response()
+            Err((StatusCode::BAD_REQUEST, "Symbol not found".to_string()))
         }
     } else {
-        AppError::new(StatusCode::BAD_REQUEST, "failed, symbol").into_response()
+        Err((StatusCode::BAD_REQUEST, "failed, symbol".to_string()))
     }
 }
 
@@ -360,7 +378,26 @@ pub async fn update_adjustments(
     }
 }
 
-pub async fn get_user_hold() -> impl IntoResponse {
-    let data = get_risk().await.unwrap();
-    (StatusCode::OK, Json(data).into_response())
+pub async fn get_user_hold(
+    Extension(id): Extension<String>,
+    Extension(api_keys): Extension<Arc<KeyManager>>,
+) -> Result<Json<Vec<Position>>, (StatusCode, String)> {
+    let key = get_api_key(api_keys, &id).await?;
+    let data = get_risk(&key.api_key, &key.api_secret)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(data))
+}
+
+async fn get_api_key(
+    api_keys: Arc<KeyManager>,
+    id: &str,
+) -> Result<SecretKey, (StatusCode, String)> {
+    match api_keys.get_key(id) {
+        Some(key) => Ok(key),
+        None => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to get API key".to_owned(),
+        )),
+    }
 }

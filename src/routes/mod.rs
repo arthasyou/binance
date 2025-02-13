@@ -6,6 +6,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use crate::{
     mw::{auth_mw, cors::create_cors},
+    secret_key::KeyManager,
     trade::{AdjustmentConfig, Trade},
     utils::TradeIdGenerator,
 };
@@ -26,6 +27,7 @@ pub fn create_routes(
     precisions: Arc<HashMap<String, u8>>,
     adjustment: Arc<HashMap<u8, Mutex<AdjustmentConfig>>>,
     jwt: Jwt,
+    api_keys: Arc<KeyManager>,
 ) -> Router {
     let cors = create_cors();
 
@@ -41,5 +43,6 @@ pub fn create_routes(
         .layer(Extension(adjustment))
         .layer(Extension(database))
         .layer(Extension(jwt))
+        .layer(Extension(api_keys))
         .layer(cors)
 }
