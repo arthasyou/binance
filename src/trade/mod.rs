@@ -3,7 +3,7 @@ use std::fmt;
 use sea_orm::{ActiveModelTrait, DatabaseConnection, Set};
 use serde::{Deserialize, Serialize};
 
-use crate::binance::account::get_order;
+use crate::binance::account::get_order_api;
 use crate::binance::order::create_order;
 
 use crate::orm::trades;
@@ -235,8 +235,13 @@ impl Trade {
             .await
             {
                 Ok(order) => {
-                    match get_order(&self.symbol, order.orderId, &self.api_key, &self.api_secret)
-                        .await
+                    match get_order_api(
+                        &self.symbol,
+                        order.orderId,
+                        &self.api_key,
+                        &self.api_secret,
+                    )
+                    .await
                     {
                         Ok(b_order) => {
                             create_trade_record(database, &self, &b_order.avgPrice).await

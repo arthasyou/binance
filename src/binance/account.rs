@@ -1,4 +1,4 @@
-use crate::{error::Result, secret_key};
+use crate::error::Result;
 use reqwest::Method;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize}; // 需要引入 rust-decimal crate
@@ -115,7 +115,7 @@ pub struct BiannceOrder {
     pub executedQty: String,
 }
 
-pub async fn get_order(
+pub async fn get_order_api(
     symbol: &str,
     order_id: u64,
     key: &str,
@@ -131,11 +131,11 @@ pub async fn get_order(
         "symbol={}&orderId={}&timestamp={}",
         symbol, order_id, timestamp
     );
-    let signature = super::create_signature(&super::API_SECRET, &query_string);
+    let signature = super::create_signature(secret, &query_string);
 
     // 完整请求 URL，包含签名
     let url = format!("{}?{}&signature={}", endpoint, query_string, signature);
 
     // 调用 get_request 发起请求并解析为 AccountInfo
-    super::request(&url, Method::GET, &super::API_KEY).await
+    super::request(&url, Method::GET, key).await
 }

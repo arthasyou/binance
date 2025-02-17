@@ -10,7 +10,7 @@ use tokio::sync::Mutex;
 
 use crate::{
     binance::{
-        account::{get_order, get_risk, Position},
+        account::{get_order_api, get_risk, Position},
         leverage::change_leverage,
         order::create_order,
     },
@@ -25,6 +25,8 @@ use crate::{
 };
 
 use crate::routes::error::AppError;
+
+use super::get_api_key;
 
 // 导入我们创建的 TradeIdGenerator
 
@@ -84,7 +86,7 @@ pub async fn create_trade(
 
             match order_response {
                 Ok(order) => {
-                    match get_order(
+                    match get_order_api(
                         &payload.symbol,
                         order.orderId,
                         &key.api_key,
@@ -231,7 +233,7 @@ pub async fn close_trade(
                 .await;
 
                 match order_response {
-                    Ok(order) => match get_order(
+                    Ok(order) => match get_order_api(
                         &payload.symbol,
                         order.orderId,
                         &key.api_key,
@@ -390,17 +392,4 @@ pub async fn get_user_hold(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(Json(data))
-}
-
-async fn get_api_key(
-    api_keys: Arc<KeyManager>,
-    id: &str,
-) -> Result<SecretKey, (StatusCode, String)> {
-    match api_keys.get_key(id) {
-        Some(key) => Ok(key),
-        None => Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to get API key".to_owned(),
-        )),
-    }
 }

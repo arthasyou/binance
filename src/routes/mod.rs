@@ -1,5 +1,6 @@
 mod auth_route;
 pub mod error;
+mod record_route;
 mod trade_route;
 
 use std::{collections::HashMap, sync::Arc};
@@ -34,6 +35,7 @@ pub fn create_routes(
     Router::new()
         // .merge(routes_manage())
         .nest("/trade", routes_trade())
+        .nest("/record", record_route::routes_record())
         .route_layer(middleware::from_fn(auth_mw::auth))
         .nest("/auth", routes_auth())
         .layer(Extension(trads))

@@ -1,4 +1,5 @@
 pub mod auth_model;
+pub mod record_model;
 pub mod trade_model;
 
 use sea_orm::prelude::DateTimeWithTimeZone;
